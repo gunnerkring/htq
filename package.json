@@ -12,7 +12,10 @@
     "build": "npm run typecheck && vite build && tsc -p tsconfig.electron.json",
     "dist": "npm run build && electron-builder --win nsis",
     "dist:portable": "npm run build && electron-builder --win portable",
-    "dist:all": "npm run build && electron-builder --win nsis portable"
+    "dist:all": "npm run build && electron-builder --win nsis portable",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:mac:dir": "npm run build && electron-builder --mac dir",
+    "dist:mac:universal": "npm run build && electron-builder --mac dmg zip --universal"
   },
   "build": {
     "appId": "com.htq.desktop",
@@ -27,6 +30,13 @@
     ],
     "win": {
       "target": "nsis"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "nsis": {
       "oneClick": true,
