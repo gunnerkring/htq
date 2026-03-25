@@ -66,6 +66,7 @@ export type ProjectionRow = {
 export type ParsedWorkbook = {
   pilots: SharpPilot[];
   reportMonthDate?: Date;
+  reportMonthNeedsReview?: boolean;
   initialSquadron?: string;
   initialPhase?: PhaseKey;
   initialMonthModeExact?: boolean;
@@ -80,7 +81,7 @@ declare global {
       openWorkbook: () => Promise<{
         fileName: string;
         filePath: string;
-        bytes: number[];
+        parsedWorkbook: ParsedWorkbook;
       } | null>;
       saveCsv: (payload: { suggestedName: string; content: string }) => Promise<{
         saved: boolean;

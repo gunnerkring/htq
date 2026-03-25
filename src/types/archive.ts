@@ -110,6 +110,7 @@ export type ArchiveRequirementRow = {
   identityKey: string;
   displayName: string;
   latestName: string;
+  latestTrainingMonth: number | null;
   latestTargetTrainingMonth: number | null;
   latestQualificationLabel: string | null;
   points: ArchiveRequirementPoint[];

@@ -1,41 +1,101 @@
-import { DEFAULT_TARGET_TRAINING_MONTH, PHASE_OPTIONS, SQUADRON_OPTIONS } from "./constants";
+import * as XLSX from "xlsx";
+import {
+  DEFAULT_TARGET_TRAINING_MONTH,
+  MAX_PILOTS,
+  PHASE_OPTIONS,
+  SQUADRON_OPTIONS
+} from "./constants";
 import { startOfMonth } from "./date";
 import type { ParsedWorkbook, PilotProjectionSettings, SortiesConfig, SharpPilot } from "../types/pilot";
-import { MAX_PILOTS } from "./constants";
 
-type ExcelWorkbook = import("exceljs").Workbook;
-type ExcelWorksheet = import("exceljs").Worksheet;
-type ExcelCellValue = import("exceljs").CellValue;
-type ExcelWorkbookInput = Parameters<ExcelWorkbook["xlsx"]["load"]>[0];
-type ExcelJsRuntime = {
-  Workbook: new () => ExcelWorkbook;
+type WorkbookProps = {
+  Author?: string;
+  LastAuthor?: string;
+  CreatedDate?: Date;
+  ModifiedDate?: Date;
 };
 
-const PREFERRED_SHEET_NAMES = ["Sharp PPT Data", "Sheet1"];
+type SourceSheet = {
+  name: string;
+  worksheet: XLSX.WorkSheet;
+  rows: unknown[][];
+};
+
+type SourceWorkbook = {
+  props: WorkbookProps;
+  sheetNames: string[];
+  sheets: Map<string, SourceSheet>;
+};
+
+type ReportMonthResolution = {
+  date?: Date;
+  needsReview: boolean;
+};
+
+const PREFERRED_SHEET_NAMES = ["Sharp PPT Data", "Sheet1", "DataSet1"];
 const REPORT_MONTH_SCAN_MAX_ROWS = 12;
 const REPORT_MONTH_SCAN_MAX_COLUMNS = 12;
-const REPORT_MONTH_SHEET_PRIORITY = ["HTQ", "Sharp PPT Data", "Sheet1", "Culled Data", "Sorties"];
+const REPORT_MONTH_SHEET_PRIORITY = ["HTQ", "Sharp PPT Data", "Sheet1", "DataSet1", "Culled Data", "Sorties"];
 const KNOWN_SQUADRONS = new Set<string>(SQUADRON_OPTIONS.map((option) => option.key));
+const MONTH_NAME_PATTERNS: Array<{ pattern: RegExp; monthIndex: number }> = [
+  { pattern: /^jan(?:uary)?$/i, monthIndex: 0 },
+  { pattern: /^feb(?:ruary)?$/i, monthIndex: 1 },
+  { pattern: /^mar(?:ch)?$/i, monthIndex: 2 },
+  { pattern: /^apr(?:il)?$/i, monthIndex: 3 },
+  { pattern: /^may$/i, monthIndex: 4 },
+  { pattern: /^jun(?:e)?$/i, monthIndex: 5 },
+  { pattern: /^jul(?:y)?$/i, monthIndex: 6 },
+  { pattern: /^aug(?:ust)?$/i, monthIndex: 7 },
+  { pattern: /^sep(?:t|tember)?$/i, monthIndex: 8 },
+  { pattern: /^oct(?:ober)?$/i, monthIndex: 9 },
+  { pattern: /^nov(?:ember)?$/i, monthIndex: 10 },
+  { pattern: /^dec(?:ember)?$/i, monthIndex: 11 }
+];
 
-let excelJsPromise: Promise<ExcelJsRuntime> | null = null;
+function buildSourceWorkbook(workbook: XLSX.WorkBook): SourceWorkbook {
+  const sheetNames = workbook.SheetNames.slice();
+  const sheets = new Map<string, SourceSheet>();
 
-function loadExcelJs(): Promise<ExcelJsRuntime> {
-  if (!excelJsPromise) {
-    excelJsPromise = import("exceljs").then(
-      (module) => (module as unknown as { default: ExcelJsRuntime }).default
-    );
+  for (const name of sheetNames) {
+    const worksheet = workbook.Sheets[name];
+
+    if (!worksheet) {
+      continue;
+    }
+
+    sheets.set(name, {
+      name,
+      worksheet,
+      rows: XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: true,
+        defval: ""
+      }) as unknown[][]
+    });
   }
 
-  return excelJsPromise;
+  return {
+    props: (workbook.Props ?? {}) as WorkbookProps,
+    sheetNames,
+    sheets
+  };
 }
 
-async function loadWorkbook(bytes: number[]): Promise<ExcelWorkbook> {
-  const ExcelJS = await loadExcelJs();
-  const workbook = new ExcelJS.Workbook();
+function loadWorkbook(bytes: number[]): SourceWorkbook {
+  const workbook = XLSX.read(Uint8Array.from(bytes), {
+    type: "array",
+    cellDates: true
+  });
 
-  await workbook.xlsx.load(Uint8Array.from(bytes).buffer as ExcelWorkbookInput);
+  return buildSourceWorkbook(workbook);
+}
 
-  return workbook;
+function loadWorkbookFromFile(filePath: string): SourceWorkbook {
+  const workbook = XLSX.readFile(filePath, {
+    cellDates: true
+  });
+
+  return buildSourceWorkbook(workbook);
 }
 
 function safeNumber(value: unknown): number {
@@ -59,8 +119,23 @@ function safeNumber(value: unknown): number {
 }
 
 function safeTrainingMonth(value: unknown): number | null {
-  const n = safeNumber(value);
-  return n > 0 ? n : null;
+  if (typeof value === "number") {
+    return !Number.isNaN(value) && value >= 0 ? value : null;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value.trim();
+
+    if (!cleaned) {
+      return null;
+    }
+
+    const parsed = Number(cleaned);
+
+    return !Number.isNaN(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  return null;
 }
 
 function normalizeReportMonth(date: Date): Date {
@@ -71,7 +146,7 @@ function isValidDate(value: Date): boolean {
   return !Number.isNaN(value.getTime());
 }
 
-function normalizeCellValue(value: ExcelCellValue | undefined | null): unknown {
+function normalizeCellValue(value: unknown): unknown {
   if (value == null) {
     return "";
   }
@@ -86,72 +161,58 @@ function normalizeCellValue(value: ExcelCellValue | undefined | null): unknown {
   }
 
   if (Array.isArray(value)) {
-    return value.map((part) => normalizeCellValue(part as ExcelCellValue)).join("");
-  }
-
-  if (typeof value === "object") {
-    if ("result" in value && value.result != null) {
-      return normalizeCellValue(value.result as ExcelCellValue);
-    }
-
-    if ("text" in value && typeof value.text === "string") {
-      return value.text;
-    }
-
-    if ("richText" in value && Array.isArray(value.richText)) {
-      return value.richText.map((part) => part.text ?? "").join("");
-    }
-
-    if ("hyperlink" in value && typeof value.hyperlink === "string") {
-      return typeof value.text === "string" ? value.text : value.hyperlink;
-    }
+    return value.map((part) => normalizeCellValue(part)).join("");
   }
 
   return "";
 }
 
-function getSheetNames(workbook: ExcelWorkbook): string[] {
-  return workbook.worksheets.map((worksheet) => worksheet.name);
+function getSheetNames(workbook: SourceWorkbook): string[] {
+  return workbook.sheetNames;
 }
 
-function getWorksheet(workbook: ExcelWorkbook, sheetName: string): ExcelWorksheet | undefined {
-  return workbook.getWorksheet(sheetName);
+function getWorksheet(workbook: SourceWorkbook, sheetName: string): SourceSheet | undefined {
+  return workbook.sheets.get(sheetName);
 }
 
-function getRowValues(sheet: ExcelWorksheet, rowNumber: number): unknown[] {
-  const values = sheet.getRow(rowNumber).values;
-
-  if (!Array.isArray(values)) {
-    return [];
-  }
-
-  return values.slice(1).map((value) => normalizeCellValue(value as ExcelCellValue));
+function getRowValues(sheet: SourceSheet, rowNumber: number): unknown[] {
+  return (sheet.rows[rowNumber - 1] ?? []).map((value) => normalizeCellValue(value));
 }
 
-function getSheetRows(sheet: ExcelWorksheet): unknown[][] {
-  const rows: unknown[][] = [];
-
-  for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
-    rows[rowNumber - 1] = getRowValues(sheet, rowNumber);
-  }
-
-  return rows;
+function getSheetRows(sheet: SourceSheet): unknown[][] {
+  return sheet.rows.map((row) => row.map((value) => normalizeCellValue(value)));
 }
 
-function getCellValue(sheet: ExcelWorksheet | undefined, address: string): unknown {
+function getCell(sheet: SourceSheet | undefined, address: string): XLSX.CellObject | undefined {
   if (!sheet) {
+    return undefined;
+  }
+
+  return sheet.worksheet[address];
+}
+
+function getCellValue(sheet: SourceSheet | undefined, address: string): unknown {
+  return normalizeCellValue(getCell(sheet, address)?.v);
+}
+
+function getCellText(sheet: SourceSheet | undefined, address: string): string {
+  const cell = getCell(sheet, address);
+
+  if (!cell) {
     return "";
   }
 
-  return normalizeCellValue(sheet.getCell(address).value as ExcelCellValue);
-}
-
-function getCellText(sheet: ExcelWorksheet | undefined, address: string): string {
-  if (!sheet) {
-    return "";
+  if (typeof cell.w === "string" && cell.w.trim()) {
+    return cell.w.trim();
   }
 
-  return sheet.getCell(address).text.trim();
+  const normalized = normalizeCellValue(cell.v);
+
+  if (normalized instanceof Date) {
+    return normalized.toISOString();
+  }
+
+  return String(normalized ?? "").trim();
 }
 
 function parseDateLikeString(value: string): Date | null {
@@ -162,7 +223,12 @@ function parseDateLikeString(value: string): Date | null {
   }
 
   const looksLikeDate =
-    /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)/i.test(trimmed) ||
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\s-]+\d{2,4}\b/i.test(
+      trimmed
+    ) ||
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{2,4}\b/i.test(
+      trimmed
+    ) ||
     /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/.test(trimmed) ||
     /\b\d{4}[/-]\d{1,2}(?:[/-]\d{1,2})?\b/.test(trimmed) ||
     /\b\d{1,2}\s+\d{4}\b/.test(trimmed);
@@ -180,7 +246,33 @@ function parseDateLikeString(value: string): Date | null {
   return normalizeReportMonth(parsed);
 }
 
-function parseReportMonthFromFileName(fileName: string | undefined): Date | undefined {
+function parseMonthOnlyString(value: string, referenceDate: Date): Date | null {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = MONTH_NAME_PATTERNS.find(({ pattern }) => pattern.test(trimmed));
+
+  if (!match) {
+    return null;
+  }
+
+  const referenceMonth = startOfMonth(referenceDate);
+  const inferredYear =
+    match.monthIndex > referenceMonth.getMonth()
+      ? referenceMonth.getFullYear() - 1
+      : referenceMonth.getFullYear();
+
+  return new Date(inferredYear, match.monthIndex, 1);
+}
+
+function parseReportMonthFromFileName(
+  fileName: string | undefined,
+  referenceDate: Date,
+  allowMonthOnly = false
+): Date | undefined {
   if (!fileName) {
     return undefined;
   }
@@ -214,10 +306,22 @@ function parseReportMonthFromFileName(fileName: string | undefined): Date | unde
     );
   }
 
+  const monthOnlyMatch = normalized.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i
+  );
+
+  if (allowMonthOnly && monthOnlyMatch) {
+    return parseMonthOnlyString(monthOnlyMatch[1], referenceDate) ?? undefined;
+  }
+
   return undefined;
 }
 
-function parseReportMonthFromWorkbook(workbook: ExcelWorkbook): Date | undefined {
+function parseReportMonthFromWorkbook(
+  workbook: SourceWorkbook,
+  referenceDate: Date,
+  allowMonthOnly = false
+): Date | undefined {
   const availableSheetNames = getSheetNames(workbook);
   const orderedSheetNames = [
     ...REPORT_MONTH_SHEET_PRIORITY,
@@ -233,17 +337,26 @@ function parseReportMonthFromWorkbook(workbook: ExcelWorkbook): Date | undefined
 
     for (let rowIndex = 1; rowIndex <= REPORT_MONTH_SCAN_MAX_ROWS; rowIndex += 1) {
       for (let columnIndex = 1; columnIndex <= REPORT_MONTH_SCAN_MAX_COLUMNS; columnIndex += 1) {
-        const cell = sheet.getCell(rowIndex, columnIndex);
-        const cellValue = normalizeCellValue(cell.value as ExcelCellValue);
+        const address = XLSX.utils.encode_cell({ r: rowIndex - 1, c: columnIndex - 1 });
+        const cell = getCell(sheet, address);
+        const cellValue = normalizeCellValue(cell?.v);
 
         if (cellValue instanceof Date && isValidDate(cellValue)) {
           return normalizeReportMonth(cellValue);
         }
 
-        const parsedFromText = parseDateLikeString(cell.text);
+        const parsedFromText = parseDateLikeString(getCellText(sheet, address));
 
         if (parsedFromText) {
           return parsedFromText;
+        }
+
+        const inferredFromMonthOnlyText = allowMonthOnly
+          ? parseMonthOnlyString(getCellText(sheet, address), referenceDate)
+          : null;
+
+        if (inferredFromMonthOnlyText) {
+          return inferredFromMonthOnlyText;
         }
 
         if (typeof cellValue === "string") {
@@ -251,6 +364,14 @@ function parseReportMonthFromWorkbook(workbook: ExcelWorkbook): Date | undefined
 
           if (parsedFromValue) {
             return parsedFromValue;
+          }
+
+          const inferredFromMonthOnlyValue = allowMonthOnly
+            ? parseMonthOnlyString(cellValue, referenceDate)
+            : null;
+
+          if (inferredFromMonthOnlyValue) {
+            return inferredFromMonthOnlyValue;
           }
         }
       }
@@ -260,23 +381,78 @@ function parseReportMonthFromWorkbook(workbook: ExcelWorkbook): Date | undefined
   return undefined;
 }
 
-function parseReportMonthFromWorkbookMetadata(workbook: ExcelWorkbook): Date | undefined {
-  const creator = workbook.creator?.trim() ?? "";
-  const lastModifiedBy = workbook.lastModifiedBy?.trim() ?? "";
+function parseReportMonthFromWorkbookMetadata(workbook: SourceWorkbook): Date | undefined {
+  const creator = workbook.props.Author?.trim() ?? "";
+  const lastModifiedBy = workbook.props.LastAuthor?.trim() ?? "";
 
   if (!creator && !lastModifiedBy) {
     return undefined;
   }
 
-  if (workbook.created instanceof Date && isValidDate(workbook.created)) {
-    return normalizeReportMonth(workbook.created);
+  if (workbook.props.CreatedDate instanceof Date && isValidDate(workbook.props.CreatedDate)) {
+    return normalizeReportMonth(workbook.props.CreatedDate);
   }
 
-  if (workbook.modified instanceof Date && isValidDate(workbook.modified)) {
-    return normalizeReportMonth(workbook.modified);
+  if (workbook.props.ModifiedDate instanceof Date && isValidDate(workbook.props.ModifiedDate)) {
+    return normalizeReportMonth(workbook.props.ModifiedDate);
   }
 
   return undefined;
+}
+
+function resolveReportMonth(
+  workbook: SourceWorkbook,
+  fileName: string | undefined,
+  referenceDate: Date
+): ReportMonthResolution {
+  const explicitWorkbookDate = parseReportMonthFromWorkbook(workbook, referenceDate);
+
+  if (explicitWorkbookDate) {
+    return {
+      date: explicitWorkbookDate,
+      needsReview: false
+    };
+  }
+
+  const explicitFileNameDate = parseReportMonthFromFileName(fileName, referenceDate);
+
+  if (explicitFileNameDate) {
+    return {
+      date: explicitFileNameDate,
+      needsReview: false
+    };
+  }
+
+  const inferredWorkbookDate = parseReportMonthFromWorkbook(workbook, referenceDate, true);
+
+  if (inferredWorkbookDate) {
+    return {
+      date: inferredWorkbookDate,
+      needsReview: true
+    };
+  }
+
+  const inferredFileNameDate = parseReportMonthFromFileName(fileName, referenceDate, true);
+
+  if (inferredFileNameDate) {
+    return {
+      date: inferredFileNameDate,
+      needsReview: true
+    };
+  }
+
+  const metadataDate = parseReportMonthFromWorkbookMetadata(workbook);
+
+  if (metadataDate) {
+    return {
+      date: metadataDate,
+      needsReview: true
+    };
+  }
+
+  return {
+    needsReview: true
+  };
 }
 
 function hasSharpHeaders(row: unknown[] | undefined): boolean {
@@ -292,18 +468,22 @@ function hasSharpHeaders(row: unknown[] | undefined): boolean {
   );
 }
 
-function findSharpRows(workbook: ExcelWorkbook): unknown[][] {
+function findSharpRows(workbook: SourceWorkbook): unknown[][] {
   const preferredMatches = PREFERRED_SHEET_NAMES
     .map((name) => getWorksheet(workbook, name))
-    .filter((sheet): sheet is ExcelWorksheet => Boolean(sheet));
+    .filter((sheet): sheet is SourceSheet => Boolean(sheet));
 
-  const allSheets = workbook.worksheets.filter((sheet): sheet is ExcelWorksheet => Boolean(sheet));
+  const allSheets = workbook.sheetNames
+    .map((name) => getWorksheet(workbook, name))
+    .filter((sheet): sheet is SourceSheet => Boolean(sheet));
 
   for (const sheet of [...preferredMatches, ...allSheets]) {
     const rows = getSheetRows(sheet);
 
-    if (hasSharpHeaders(rows[1])) {
-      return rows;
+    const headerRowIndex = rows.findIndex((row) => hasSharpHeaders(row));
+
+    if (headerRowIndex >= 0) {
+      return rows.slice(headerRowIndex);
     }
   }
 
@@ -312,8 +492,8 @@ function findSharpRows(workbook: ExcelWorkbook): unknown[][] {
   );
 }
 
-function parseInitialPhase(workbook: ExcelWorkbook): ParsedWorkbook["initialPhase"] {
-  const phaseLabel = getCellText(getWorksheet(workbook, "HTQ"), "D26");
+function parseInitialPhase(workbook: SourceWorkbook): ParsedWorkbook["initialPhase"] {
+  const phaseLabel = String(getCellValue(getWorksheet(workbook, "HTQ"), "D26")).trim();
 
   return PHASE_OPTIONS.find((option) => option.label === phaseLabel)?.key;
 }
@@ -321,7 +501,7 @@ function parseInitialPhase(workbook: ExcelWorkbook): ParsedWorkbook["initialPhas
 function parseInitialSquadron(data: unknown[][]): ParsedWorkbook["initialSquadron"] {
   const counts = new Map<string, number>();
 
-  for (const row of data.slice(2, 2 + MAX_PILOTS)) {
+  for (const row of data.slice(1, 1 + MAX_PILOTS)) {
     const squadron = String(row?.[3] ?? "").trim().toUpperCase();
 
     if (!KNOWN_SQUADRONS.has(squadron)) {
@@ -344,7 +524,7 @@ function parseInitialSquadron(data: unknown[][]): ParsedWorkbook["initialSquadro
   return bestSquadron;
 }
 
-function parseInitialMonthModeExact(workbook: ExcelWorkbook): boolean | undefined {
+function parseInitialMonthModeExact(workbook: SourceWorkbook): boolean | undefined {
   const value = getCellText(getWorksheet(workbook, "Culled Data"), "L1").toUpperCase();
 
   if (value === "YES") {
@@ -359,7 +539,7 @@ function parseInitialMonthModeExact(workbook: ExcelWorkbook): boolean | undefine
 }
 
 function parseInitialPilotSettings(
-  workbook: ExcelWorkbook
+  workbook: SourceWorkbook
 ): Pick<ParsedWorkbook, "initialSelectedNames" | "initialPilotSettings"> {
   const sheet = getWorksheet(workbook, "HTQ");
 
@@ -397,7 +577,7 @@ function parseInitialPilotSettings(
   };
 }
 
-function parseInitialSortiesConfig(workbook: ExcelWorkbook): SortiesConfig | undefined {
+function parseInitialSortiesConfig(workbook: SourceWorkbook): SortiesConfig | undefined {
   const sheet = getWorksheet(workbook, "Sorties");
 
   if (!sheet) {
@@ -424,7 +604,7 @@ function parseInitialSortiesConfig(workbook: ExcelWorkbook): SortiesConfig | und
 }
 
 function parseSharpRows(data: unknown[][]): SharpPilot[] {
-  const rows = data.slice(2, 2 + MAX_PILOTS);
+  const rows = data.slice(1, 1 + MAX_PILOTS);
 
   return rows
     .map((row) => ({
@@ -436,28 +616,47 @@ function parseSharpRows(data: unknown[][]): SharpPilot[] {
     .filter((pilot) => pilot.name.length > 0);
 }
 
-export async function parseSharpWorkbookBytes(bytes: number[]): Promise<SharpPilot[]> {
-  const workbook = await loadWorkbook(bytes);
-
-  return parseSharpRows(findSharpRows(workbook));
-}
-
-export async function parseWorkbookBytes(bytes: number[], fileName?: string): Promise<ParsedWorkbook> {
-  const workbook = await loadWorkbook(bytes);
+function parseWorkbook(
+  workbook: SourceWorkbook,
+  fileName?: string,
+  referenceDate = new Date()
+): ParsedWorkbook {
   const sharpData = findSharpRows(workbook);
   const pilots = parseSharpRows(sharpData);
-  const reportMonthDate =
-    parseReportMonthFromWorkbook(workbook) ??
-    parseReportMonthFromFileName(fileName) ??
-    parseReportMonthFromWorkbookMetadata(workbook);
+  const reportMonth = resolveReportMonth(workbook, fileName, referenceDate);
 
   return {
     pilots,
-    reportMonthDate,
+    reportMonthDate: reportMonth.date,
+    reportMonthNeedsReview: reportMonth.needsReview,
     initialSquadron: parseInitialSquadron(sharpData),
     initialPhase: parseInitialPhase(workbook),
     initialMonthModeExact: parseInitialMonthModeExact(workbook),
     ...parseInitialPilotSettings(workbook),
     initialSortiesConfig: parseInitialSortiesConfig(workbook)
   };
+}
+
+export async function parseSharpWorkbookBytes(bytes: number[]): Promise<SharpPilot[]> {
+  const workbook = loadWorkbook(bytes);
+
+  return parseSharpRows(findSharpRows(workbook));
+}
+
+export async function parseWorkbookBytes(
+  bytes: number[],
+  fileName?: string,
+  referenceDate = new Date()
+): Promise<ParsedWorkbook> {
+  const workbook = loadWorkbook(bytes);
+  return parseWorkbook(workbook, fileName, referenceDate);
+}
+
+export async function parseWorkbookFile(
+  filePath: string,
+  fileName?: string,
+  referenceDate = new Date()
+): Promise<ParsedWorkbook> {
+  const workbook = loadWorkbookFromFile(filePath);
+  return parseWorkbook(workbook, fileName, referenceDate);
 }

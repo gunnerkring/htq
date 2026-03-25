@@ -7,6 +7,7 @@ export type PersistedWorkspaceTab = "pilots" | "forecast" | "sorties" | "history
 export type PersistedWorkspaceState = {
   selectedSquadron: string;
   monthModeExact: boolean;
+  reportMonthNeedsReview: boolean;
   reviewTrackingEnabled: boolean;
   sharpRows: SharpPilot[];
   selectedNames: string[];
@@ -57,6 +58,7 @@ export function loadPersistedWorkspaceState(): PersistedWorkspaceState | null {
     return {
       selectedSquadron: parsed.selectedSquadron,
       monthModeExact: parsed.monthModeExact,
+      reportMonthNeedsReview: parsed.reportMonthNeedsReview ?? false,
       reviewTrackingEnabled: parsed.reviewTrackingEnabled ?? false,
       sharpRows: parsed.sharpRows,
       selectedNames: parsed.selectedNames,

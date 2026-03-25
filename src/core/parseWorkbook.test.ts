@@ -36,7 +36,7 @@ describe("parseWorkbookBytes", () => {
     sharpSheet.getCell("E4").value = 18;
     sharpSheet.getCell("G4").value = 430.5;
 
-    htqSheet.getCell("A1").value = new Date(2026, 2, 1);
+    htqSheet.getCell("A1").value = "March 2026";
     htqSheet.getCell("D26").value = "A (VP-4,10,40,45)";
     htqSheet.getCell("A29").value = "Y";
     htqSheet.getCell("B29").value = 45;
@@ -51,7 +51,8 @@ describe("parseWorkbookBytes", () => {
 
     const parsed = await parseWorkbookBytes(
       toByteArray(await workbook.xlsx.writeBuffer()),
-      "sharp_mar_2026.xlsx"
+      "sharp_mar_2026.xlsx",
+      new Date(2026, 2, 25)
     );
 
     expect(parsed.pilots).toEqual([
@@ -69,6 +70,7 @@ describe("parseWorkbookBytes", () => {
       }
     ]);
     expectMonth(parsed.reportMonthDate, 2026, 2);
+    expect(parsed.reportMonthNeedsReview).toBe(false);
     expect(parsed.initialSquadron).toBe("VP-10");
     expect(parsed.initialPhase).toBe("A");
     expect(parsed.initialMonthModeExact).toBe(true);
@@ -104,9 +106,90 @@ describe("parseWorkbookBytes", () => {
 
     const parsed = await parseWorkbookBytes(
       toByteArray(await workbook.xlsx.writeBuffer()),
-      "htq_2026-04.xlsx"
+      "htq_2026-04.xlsx",
+      new Date(2026, 2, 25)
     );
 
     expectMonth(parsed.reportMonthDate, 2026, 3);
+    expect(parsed.reportMonthNeedsReview).toBe(false);
+  });
+
+  it("preserves training month 0 from the imported workbook", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sharpSheet = workbook.addWorksheet("Sheet1");
+
+    sharpSheet.getCell("A2").value = "Name";
+    sharpSheet.getCell("C2").value = "Actc";
+    sharpSheet.getCell("E2").value = "Month(s) In Unit";
+    sharpSheet.getCell("G2").value = "Career Flight Time";
+    sharpSheet.getCell("A3").value = "Zero, Pilot, LTJG";
+    sharpSheet.getCell("C3").value = "1";
+    sharpSheet.getCell("E3").value = 0;
+    sharpSheet.getCell("G3").value = 125;
+
+    const parsed = await parseWorkbookBytes(
+      toByteArray(await workbook.xlsx.writeBuffer()),
+      "htq_2025-10.xlsx",
+      new Date(2026, 2, 25)
+    );
+
+    expect(parsed.pilots).toEqual([
+      {
+        name: "Zero, Pilot, LTJG",
+        level: "1",
+        trainingMonth: 0,
+        pilotHours: 125
+      }
+    ]);
+  });
+
+  it("infers the year for month-only SHARP report labels", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sharpSheet = workbook.addWorksheet("DataSet1");
+
+    sharpSheet.getCell("A2").value = "Name";
+    sharpSheet.getCell("C2").value = "Actc";
+    sharpSheet.getCell("E2").value = "Month(s) In Unit";
+    sharpSheet.getCell("G2").value = "Career Flight Time";
+    sharpSheet.getCell("J3").value = "October";
+    sharpSheet.getCell("A3").value = "Example, Pilot, LT";
+    sharpSheet.getCell("C3").value = "2P";
+    sharpSheet.getCell("D3").value = "VP-4";
+    sharpSheet.getCell("E3").value = 18;
+    sharpSheet.getCell("G3").value = 430.5;
+
+    const parsed = await parseWorkbookBytes(
+      toByteArray(await workbook.xlsx.writeBuffer()),
+      "P-8A Pilot Proficiency_VP-4_OCT.xlsx",
+      new Date(2026, 2, 25)
+    );
+
+    expectMonth(parsed.reportMonthDate, 2025, 9);
+    expect(parsed.reportMonthNeedsReview).toBe(true);
+  });
+
+  it("marks future-looking month-only labels for review instead of silently trusting them", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sharpSheet = workbook.addWorksheet("DataSet1");
+
+    sharpSheet.getCell("A2").value = "Name";
+    sharpSheet.getCell("C2").value = "Actc";
+    sharpSheet.getCell("E2").value = "Month(s) In Unit";
+    sharpSheet.getCell("G2").value = "Career Flight Time";
+    sharpSheet.getCell("J3").value = "April";
+    sharpSheet.getCell("A3").value = "Example, Pilot, LT";
+    sharpSheet.getCell("C3").value = "2P";
+    sharpSheet.getCell("D3").value = "VP-4";
+    sharpSheet.getCell("E3").value = 18;
+    sharpSheet.getCell("G3").value = 430.5;
+
+    const parsed = await parseWorkbookBytes(
+      toByteArray(await workbook.xlsx.writeBuffer()),
+      "P-8A Pilot Proficiency_VP-4_APR.xlsx",
+      new Date(2026, 2, 25)
+    );
+
+    expectMonth(parsed.reportMonthDate, 2025, 3);
+    expect(parsed.reportMonthNeedsReview).toBe(true);
   });
 });

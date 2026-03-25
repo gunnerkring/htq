@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { parseWorkbookFile } from "../src/core/parseWorkbook";
 
 type SaveCsvPayload = {
   suggestedName: string;
@@ -64,12 +65,12 @@ ipcMain.handle("dialog:openWorkbook", async () => {
   if (result.canceled || !result.filePaths[0]) return null;
 
   const filePath = result.filePaths[0];
-  const bytes = Array.from(await readFile(filePath));
+  const parsedWorkbook = await parseWorkbookFile(filePath, path.basename(filePath));
 
   return {
     fileName: path.basename(filePath),
     filePath,
-    bytes
+    parsedWorkbook
   };
 });
 

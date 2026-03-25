@@ -52,6 +52,36 @@ function formatMonthYear(date: Date): string {
   });
 }
 
+function comparePilotNames(leftName: string, rightName: string): number {
+  return formatPilotDisplayName(leftName).localeCompare(formatPilotDisplayName(rightName));
+}
+
+function compareTrainingMonths(
+  leftTrainingMonth: number | null,
+  rightTrainingMonth: number | null
+): number {
+  const leftValue = leftTrainingMonth ?? Number.NEGATIVE_INFINITY;
+  const rightValue = rightTrainingMonth ?? Number.NEGATIVE_INFINITY;
+
+  return rightValue - leftValue;
+}
+
+function compareArchivedPilots(
+  left: Pick<ArchivedPilotProjection, "name" | "startTrainingMonth">,
+  right: Pick<ArchivedPilotProjection, "name" | "startTrainingMonth">
+): number {
+  const trainingMonthDifference = compareTrainingMonths(
+    left.startTrainingMonth,
+    right.startTrainingMonth
+  );
+
+  if (trainingMonthDifference !== 0) {
+    return trainingMonthDifference;
+  }
+
+  return comparePilotNames(left.name, right.name);
+}
+
 function normalizeReportMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
@@ -242,18 +272,20 @@ export function normalizeArchiveSnapshots(
       }))
       .map((snapshot) => ({
         ...snapshot,
-        pilots: snapshot.pilots.map((pilot) => {
-          const legacyPilot = pilot as ArchivedPilotProjection & {
-            qualifiesInMonthIndex?: number | null;
-          };
+        pilots: snapshot.pilots
+          .map((pilot) => {
+            const legacyPilot = pilot as ArchivedPilotProjection & {
+              qualifiesInMonthIndex?: number | null;
+            };
 
-          return {
-            ...pilot,
-            identityKey: pilot.identityKey || getPilotIdentityKey(pilot.name),
-            qualifiesByEndOfMonthIndex:
-              pilot.qualifiesByEndOfMonthIndex ?? legacyPilot.qualifiesInMonthIndex ?? null
-          };
-        })
+            return {
+              ...pilot,
+              identityKey: pilot.identityKey || getPilotIdentityKey(pilot.name),
+              qualifiesByEndOfMonthIndex:
+                pilot.qualifiesByEndOfMonthIndex ?? legacyPilot.qualifiesInMonthIndex ?? null
+            };
+          })
+          .sort(compareArchivedPilots)
       }))
       .sort(sortSnapshots);
 }
@@ -291,7 +323,7 @@ export function createArchiveSnapshot(
         reviewByName.get(pilotInput.pilot.name)
       )
     )
-    .sort((left, right) => formatPilotDisplayName(left.name).localeCompare(formatPilotDisplayName(right.name)));
+    .sort(compareArchivedPilots);
 
   return {
     id: createSnapshotId(savedAt),
@@ -731,10 +763,22 @@ export function buildArchiveRequirementRows(
         identityKey: pilot.identityKey,
         displayName: formatPilotDisplayName(latestPilot?.name ?? pilot.name),
         latestName: latestPilot?.name ?? pilot.name,
+        latestTrainingMonth: latestPilot?.startTrainingMonth ?? pilot.startTrainingMonth,
         latestTargetTrainingMonth: latestPilot?.targetTrainingMonth ?? null,
         latestQualificationLabel: latestPilot?.qualificationLabel ?? null,
         points
       };
     })
-    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+    .sort((left, right) => {
+      const trainingMonthDifference = compareTrainingMonths(
+        left.latestTrainingMonth,
+        right.latestTrainingMonth
+      );
+
+      if (trainingMonthDifference !== 0) {
+        return trainingMonthDifference;
+      }
+
+      return left.displayName.localeCompare(right.displayName);
+    });
 }

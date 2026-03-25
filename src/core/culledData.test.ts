@@ -30,4 +30,14 @@ describe("buildCulledData", () => {
 
     expect(pilot.hrsPerMonthTo600).toBeNull();
   });
+
+  it("keeps training month 0 as a valid month instead of treating it as missing", () => {
+    const [pilot] = buildCulledData(
+      [{ name: "New, Pilot, LTJG", level: "1", trainingMonth: 0, pilotHours: 500 }],
+      true
+    );
+
+    expect(pilot.trainingMonth).toBe(0);
+    expect(pilot.hrsPerMonthTo600).toBeCloseTo(4);
+  });
 });

@@ -33,7 +33,6 @@ import {
 import { buildCulledData } from "./core/culledData";
 import { startOfMonth } from "./core/date";
 import { buildProjectionMonths } from "./core/phasePatterns";
-import { parseWorkbookBytes } from "./core/parseWorkbook";
 import { buildPdfReportHtml } from "./core/pdfReport";
 import { projectHoursToQualify, projectionsToCsv } from "./core/projectionEngine";
 import {
@@ -82,6 +81,27 @@ function buildAutoCalcSummary(results: AutoCalcResult[]): string {
   return `Auto-calculated ${calculatedCount} of ${results.length} selected pilots. Review the highlighted pilots in Selected Pilot Settings.`;
 }
 
+function formatMonthInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function parseMonthInputValue(value: string): Date | null {
+  const match = value.match(/^(\d{4})-(\d{2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+
+  if (!Number.isInteger(year) || !Number.isInteger(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    return null;
+  }
+
+  return startOfMonth(new Date(year, monthIndex, 1));
+}
+
 export default function App() {
   const [initialWorkspaceState] = useState(() => loadPersistedWorkspaceState());
 
@@ -106,6 +126,9 @@ export default function App() {
     sanitizePositiveInteger(initialWorkspaceState?.numberOfPilots, DEFAULT_SORTIE_PILOT_COUNT)
   );
   const [monthModeExact, setMonthModeExact] = useState(initialWorkspaceState?.monthModeExact ?? false);
+  const [reportMonthNeedsReview, setReportMonthNeedsReview] = useState(
+    initialWorkspaceState?.reportMonthNeedsReview ?? false
+  );
   const [sharpRows, setSharpRows] = useState<SharpPilot[]>(initialWorkspaceState?.sharpRows ?? []);
   const [selectedNames, setSelectedNames] = useState<string[]>(
     initialWorkspaceState?.selectedNames ?? []
@@ -266,6 +289,7 @@ export default function App() {
     persistWorkspaceState({
       selectedSquadron,
       monthModeExact,
+      reportMonthNeedsReview,
       reviewTrackingEnabled,
       sharpRows,
       selectedNames,
@@ -292,6 +316,7 @@ export default function App() {
     numberOfPilots,
     pilotSettings,
     projectionBaseDate,
+    reportMonthNeedsReview,
     reviewTrackingEnabled,
     selectedNames,
     selectedSquadron,
@@ -313,6 +338,25 @@ export default function App() {
     clearAutoCalcFeedback();
     setArchiveMessage("");
     setMonthModeExact(value);
+  }
+
+  function handleSetReportMonthValue(value: string) {
+    const parsed = parseMonthInputValue(value);
+
+    if (!parsed) {
+      return;
+    }
+
+    setError("");
+    setArchiveMessage("");
+    setProjectionBaseDate(parsed);
+    setReportMonthNeedsReview(false);
+  }
+
+  function confirmReportMonth() {
+    setError("");
+    setArchiveMessage("");
+    setReportMonthNeedsReview(false);
   }
 
   function handleSetAverageHomeCycleSortieLength(value: number) {
@@ -339,11 +383,12 @@ export default function App() {
       const response = await window.htqApi.openWorkbook();
       if (!response) return;
 
-      const workbook = await parseWorkbookBytes(response.bytes, response.fileName);
+      const workbook = response.parsedWorkbook;
       const initialSortiesConfig = sanitizeSortiesConfig(workbook.initialSortiesConfig);
 
       setSharpRows(workbook.pilots);
       setProjectionBaseDate(workbook.reportMonthDate ?? startOfMonth(new Date()));
+      setReportMonthNeedsReview(workbook.reportMonthNeedsReview ?? workbook.reportMonthDate == null);
       setSelectedSquadron(
         workbook.initialSquadron ??
           (workbook.initialPhase
@@ -371,7 +416,7 @@ export default function App() {
   }
 
   async function exportCsv() {
-    if (phaseWindow.error) {
+    if (phaseWindow.error || reportMonthNeedsReview) {
       return;
     }
 
@@ -383,7 +428,7 @@ export default function App() {
   }
 
   async function exportPdf() {
-    if (phaseWindow.error) {
+    if (phaseWindow.error || reportMonthNeedsReview) {
       return;
     }
 
@@ -486,7 +531,12 @@ export default function App() {
   }
 
   function saveSnapshot() {
-    if (phaseWindow.error || selectedConfiguredPilots.length === 0 || projections.length === 0) {
+    if (
+      phaseWindow.error ||
+      reportMonthNeedsReview ||
+      selectedConfiguredPilots.length === 0 ||
+      projections.length === 0
+    ) {
       return;
     }
 
@@ -567,6 +617,7 @@ export default function App() {
     setAverageDeploymentSortieLength(DEFAULT_DEPLOYMENT_SORTIE_LENGTH);
     setNumberOfPilots(DEFAULT_SORTIE_PILOT_COUNT);
     setMonthModeExact(false);
+    setReportMonthNeedsReview(false);
     setSharpRows([]);
     setSelectedNames([]);
     setPilotSettings({});
@@ -587,14 +638,20 @@ export default function App() {
         setSquadron={handleSetSquadron}
         monthModeExact={monthModeExact}
         setMonthModeExact={handleSetMonthModeExact}
+        reportMonthValue={formatMonthInputValue(projectionBaseDate)}
+        setReportMonthValue={handleSetReportMonthValue}
+        reportMonthNeedsReview={reportMonthNeedsReview}
+        onConfirmReportMonth={confirmReportMonth}
         onOpenWorkbook={openWorkbook}
         onSaveSnapshot={saveSnapshot}
         onExportCsv={exportCsv}
         onExportPdf={exportPdf}
         onAutoCalculateSelected={autoCalculateSelected}
-        exportDisabled={projections.length === 0 || Boolean(phaseWindow.error)}
+        exportDisabled={projections.length === 0 || Boolean(phaseWindow.error) || reportMonthNeedsReview}
         autoCalculateDisabled={selectedConfiguredPilots.length === 0 || Boolean(phaseWindow.error)}
-        saveSnapshotDisabled={selectedConfiguredPilots.length === 0 || Boolean(phaseWindow.error)}
+        saveSnapshotDisabled={
+          selectedConfiguredPilots.length === 0 || Boolean(phaseWindow.error) || reportMonthNeedsReview
+        }
         sourceLabel={sourceLabel}
       />
       {activeError ? <div className="error-banner">{activeError}</div> : null}

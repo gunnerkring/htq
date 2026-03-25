@@ -119,6 +119,12 @@ table {
   line-height: 1.6;
 }
 
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .controls-panel {
   overflow: hidden;
 }
@@ -138,12 +144,25 @@ table {
 
 .guidance-card {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   background: rgba(234, 238, 243, 0.7);
 }
 
+.guidance-stack {
+  display: grid;
+  gap: 16px;
+  width: 100%;
+}
+
+.report-month-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(136, 126, 108, 0.16);
+}
+
 .guidance-copy {
-  max-width: 34ch;
+  max-width: 36ch;
   margin: 0;
   color: var(--ink-soft);
   font-size: 1.02rem;
@@ -173,6 +192,7 @@ label {
 
 input[type="number"],
 input[type="search"],
+input[type="month"],
 select {
   width: 100%;
   padding: 12px 14px;
@@ -184,10 +204,68 @@ select {
 
 input[type="number"]:focus,
 input[type="search"]:focus,
+input[type="month"]:focus,
 select:focus {
   outline: none;
   border-color: var(--teal);
   box-shadow: 0 0 0 4px rgba(88, 115, 72, 0.14);
+}
+
+.report-month-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.report-month-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.button-compact {
+  min-height: 42px;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(136, 126, 108, 0.18);
+  background: rgba(250, 247, 240, 0.92);
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-pill-warning {
+  border-color: rgba(150, 124, 70, 0.28);
+  background: rgba(231, 220, 192, 0.9);
+  color: #6a5936;
+}
+
+.status-pill-success {
+  border-color: rgba(88, 115, 72, 0.24);
+  background: rgba(221, 229, 215, 0.92);
+  color: #435a38;
+}
+
+.field-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.field-note.warning {
+  color: #6a5936;
+  font-weight: 600;
 }
 
 .checkbox-block {
@@ -333,6 +411,58 @@ select:focus {
 
 .summary-card-primary {
   background: rgba(234, 238, 243, 0.96);
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(34, 41, 49, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.dialog-card {
+  width: min(720px, 100%);
+  max-height: min(78vh, 760px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid rgba(136, 126, 108, 0.22);
+  border-radius: 24px;
+  background: rgba(250, 247, 240, 0.98);
+  box-shadow: 0 24px 52px rgba(39, 45, 47, 0.24);
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.dialog-header h3 {
+  margin: 6px 0 0;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 12px;
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.dialog-note {
+  margin: 18px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.94rem;
+  line-height: 1.6;
 }
 
 .summary-card-success {
