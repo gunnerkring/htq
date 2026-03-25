@@ -16,67 +16,38 @@ function expandPhaseRuns(runs: Array<[PhaseCycleCode, number]>): PhaseCycleCode[
 }
 
 const PHASE_SCHEDULE_START = new Date(PHASE_SCHEDULE_START_YEAR, PHASE_SCHEDULE_START_MONTH, 1);
+const BASE_PHASE_CYCLE = expandPhaseRuns([
+  ["D", 6],
+  ["H", 12]
+]);
+const BASE_PHASE_CYCLE_LENGTH = BASE_PHASE_CYCLE.length;
 
-const PHASE_CALENDARS: Record<PhaseKey, PhaseCycleCode[]> = {
-  A: expandPhaseRuns([
-    ["D", 2],
-    ["H", 12],
-    ["D", 6],
-    ["H", 12],
-    ["D", 6],
-    ["H", 12]
-  ]),
-  B: expandPhaseRuns([
-    ["H", 2],
-    ["D", 6],
-    ["H", 12],
-    ["D", 6],
-    ["H", 12],
-    ["D", 6],
-    ["H", 6]
-  ]),
-  C: expandPhaseRuns([
-    ["H", 8],
-    ["D", 6],
-    ["H", 12],
-    ["D", 6],
-    ["H", 12],
-    ["D", 3],
-    ["H", 3]
-  ])
+// Each phase is a different entry point into the same repeating 6-month deployment /
+// 12-month homecycle rhythm.
+const PHASE_START_OFFSETS: Record<PhaseKey, number> = {
+  A: 4,
+  B: 16,
+  C: 10
 };
 
-function formatSupportedWindowBoundary(date: Date): string {
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric"
-  });
+function modulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
 }
 
 export function buildProjectionMonths(phase: PhaseKey, baseDate: Date): ProjectionMonthsResult {
   const projectionStart = startOfMonth(baseDate);
-  const calendar = PHASE_CALENDARS[phase];
   const startOffset = monthDiff(PHASE_SCHEDULE_START, projectionStart);
-  const lastSupportedOffset = calendar.length - PROJECTION_MONTHS;
 
-  if (startOffset < 0 || startOffset > lastSupportedOffset) {
-    const firstSupportedMonth = PHASE_SCHEDULE_START;
-    const lastSupportedMonth = addMonths(PHASE_SCHEDULE_START, lastSupportedOffset);
-
-    return {
-      months: [],
-      error: `The workbook phase calendar only supports projection start months from ${formatSupportedWindowBoundary(firstSupportedMonth)} through ${formatSupportedWindowBoundary(lastSupportedMonth)}.`
-    };
-  }
-
+  const phaseStartOffset = PHASE_START_OFFSETS[phase];
   const months = Array.from({ length: PROJECTION_MONTHS }, (_, index) => {
     const date = addMonths(projectionStart, index);
+    const cycleIndex = modulo(phaseStartOffset + startOffset + index, BASE_PHASE_CYCLE_LENGTH);
 
     return {
       date,
       monthLabel: monthLabel(date),
       yearLabel: yearLabel(date),
-      cycle: calendar[startOffset + index]
+      cycle: BASE_PHASE_CYCLE[cycleIndex]
     };
   });
 

@@ -1,3 +1,4 @@
+import { formatTrainingMonthProgress } from "./display";
 import {
   QUAL_HOURS,
   WAIVER_QUAL_HOURS
@@ -28,7 +29,7 @@ function getSortieDivisor(sortieLength: number, numberOfPilots: number): number 
 }
 
 function buildMonthlySorties(
-  projectedHoursByMonth: number[],
+  endOfMonthHoursByMonth: number[],
   months: ProjectionMonth[],
   settings: PilotProjectionSettings,
   sortiesConfig: SortiesConfig,
@@ -44,7 +45,7 @@ function buildMonthlySorties(
   );
 
   return months.map((month, index) => {
-    if (index > 0 && projectedHoursByMonth[index - 1] >= threshold) {
+    if (index > 0 && endOfMonthHoursByMonth[index - 1] >= threshold) {
       return "";
     }
 
@@ -65,17 +66,18 @@ export function projectHoursToQualify(
   sortiesConfig: SortiesConfig
 ): ProjectionRow[] {
   return pilots.map(({ pilot, settings }) => {
-    const projectedHoursByMonth: number[] = [];
+    // Store cumulative totals after each month's planned flying.
+    const endOfMonthHoursByMonth: number[] = [];
     let runningHours = pilot.pilotHours;
 
     for (const month of months) {
       runningHours += month.cycle === "D" ? settings.deploymentHours : settings.frtpHours;
-      projectedHoursByMonth.push(runningHours);
+      endOfMonthHoursByMonth.push(runningHours);
     }
 
     const threshold = getThreshold(settings.waiver550);
     let currentTrainingMonth = pilot.trainingMonth;
-    let qualifiesInMonthIndex: number | null = null;
+    let qualifiesByEndOfMonthIndex: number | null = null;
     const trainingMonthsByMonth: (number | "Q" | "")[] = [];
 
     for (let index = 0; index < months.length; index += 1) {
@@ -84,10 +86,10 @@ export function projectHoursToQualify(
         continue;
       }
 
-      if (projectedHoursByMonth[index] >= threshold) {
+      if (endOfMonthHoursByMonth[index] >= threshold) {
         trainingMonthsByMonth.push("Q");
-        if (qualifiesInMonthIndex == null) {
-          qualifiesInMonthIndex = index;
+        if (qualifiesByEndOfMonthIndex == null) {
+          qualifiesByEndOfMonthIndex = index;
         }
         currentTrainingMonth = null;
       } else {
@@ -105,16 +107,16 @@ export function projectHoursToQualify(
       waiver550: settings.waiver550,
       deploymentHours: settings.deploymentHours,
       frtpHours: settings.frtpHours,
-      projectedHoursByMonth,
+      endOfMonthHoursByMonth,
       trainingMonthsByMonth,
       monthlySortiesByMonth: buildMonthlySorties(
-        projectedHoursByMonth,
+        endOfMonthHoursByMonth,
         months,
         settings,
         sortiesConfig,
         threshold
       ),
-      qualifiesInMonthIndex
+      qualifiesByEndOfMonthIndex
     };
   });
 }
@@ -130,7 +132,7 @@ export function projectionsToCsv(
   const phasePattern = months.map((month) => month.cycle);
   const lines: string[] = [];
 
-  lines.push(["HTQ Projection", escapeCsv(phaseLabel)].join(","));
+  lines.push(["HTQ End-of-Month Projection", escapeCsv(phaseLabel)].join(","));
   lines.push(["Month", ...monthLabels].join(","));
   lines.push(["Year", ...yearLabels].join(","));
   lines.push(["Cycle", ...phasePattern].join(","));
@@ -142,10 +144,18 @@ export function projectionsToCsv(
         `Threshold ${row.threshold}`,
         `Deployment ${row.deploymentHours}`,
         `FRTP ${row.frtpHours}`,
-        ...row.projectedHoursByMonth.map((value) => value.toFixed(1))
+        ...row.endOfMonthHoursByMonth.map((value) => value.toFixed(1))
       ].join(",")
     );
-    lines.push(["Training Month", "", "", "", ...row.trainingMonthsByMonth.map(String)].join(","));
+    lines.push(
+      [
+        "Training Month",
+        "",
+        "",
+        "",
+        ...row.trainingMonthsByMonth.map(formatTrainingMonthProgress)
+      ].join(",")
+    );
   }
 
   lines.push("");

@@ -1,3 +1,4 @@
+import { formatOptionalTrainingMonth } from "../core/display";
 import type { CulledPilot } from "../types/pilot";
 
 type Props = {
@@ -35,7 +36,7 @@ export function CulledTable({ pilots }: Props) {
               <tr key={pilot.name}>
                 <td>{pilot.name}</td>
                 <td>{pilot.level}</td>
-                <td>{pilot.trainingMonth ?? ""}</td>
+                <td>{formatOptionalTrainingMonth(pilot.trainingMonth, "")}</td>
                 <td>{pilot.pilotHours.toFixed(1)}</td>
                 <td>
                   <span className={pilot.over600 ? "status-chip danger" : "status-chip success"}>

@@ -1,4 +1,7 @@
-import { Fragment } from "react";
+import {
+  formatPilotDisplayName,
+  formatTrainingMonthProgress
+} from "../core/display";
 import type { ProjectionMonth, ProjectionRow } from "../types/pilot";
 
 type Props = {
@@ -10,13 +13,31 @@ function formatCycleLabel(cycle: ProjectionMonth["cycle"]): string {
   return cycle === "D" ? "Deployment" : "Homecycle";
 }
 
+function formatTrainingMonthValue(value: ProjectionRow["trainingMonthsByMonth"][number]): string {
+  return formatTrainingMonthProgress(value);
+}
+
 export function ProjectionTable({ rows, months }: Props) {
+  const sortedRows = [...rows].sort((left, right) => {
+    const leftTrainingMonth = left.startTrainingMonth ?? Number.NEGATIVE_INFINITY;
+    const rightTrainingMonth = right.startTrainingMonth ?? Number.NEGATIVE_INFINITY;
+
+    if (leftTrainingMonth !== rightTrainingMonth) {
+      return rightTrainingMonth - leftTrainingMonth;
+    }
+
+    return formatPilotDisplayName(left.name).localeCompare(formatPilotDisplayName(right.name));
+  });
+
   return (
     <section className="panel">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Forecast</p>
           <h2>HTQ Projection</h2>
+          <p className="panel-subtitle">
+            Each column shows the end-of-month result after planned flying for that month.
+          </p>
         </div>
         <div className="section-pill">{months.length} months</div>
       </div>
@@ -27,15 +48,14 @@ export function ProjectionTable({ rows, months }: Props) {
           <table className="data-table projection-table">
             <thead>
               <tr>
-                <th>Month</th>
+                <th>Pilot</th>
                 {months.map((month, index) => (
-                  <th key={`m-${index}`}>{month.monthLabel}</th>
-                ))}
-              </tr>
-              <tr>
-                <th>Year</th>
-                {months.map((month, index) => (
-                  <th key={`y-${index}`}>{month.yearLabel}</th>
+                  <th key={`m-${index}`}>
+                    <span className="projection-month-header">
+                      <span className="projection-month-name">{month.monthLabel}</span>
+                      <span className="projection-month-year">{month.yearLabel}</span>
+                    </span>
+                  </th>
                 ))}
               </tr>
               <tr>
@@ -46,21 +66,13 @@ export function ProjectionTable({ rows, months }: Props) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <Fragment key={row.name}>
-                  <tr key={`${row.name}-hours`} className="projection-row">
-                    <td>{row.name}</td>
-                    {row.projectedHoursByMonth.map((value, index) => (
-                      <td key={`${row.name}-h-${index}`}>{value.toFixed(1)}</td>
-                    ))}
-                  </tr>
-                  <tr key={`${row.name}-tm`} className="detail-row">
-                    <td>Training Month</td>
-                    {row.trainingMonthsByMonth.map((value, index) => (
-                      <td key={`${row.name}-tm-${index}`}>{value}</td>
-                    ))}
-                  </tr>
-                </Fragment>
+              {sortedRows.map((row) => (
+                <tr key={row.name} className="projection-row">
+                  <td>{formatPilotDisplayName(row.name)}</td>
+                  {row.trainingMonthsByMonth.map((value, index) => (
+                    <td key={`${row.name}-tm-${index}`}>{formatTrainingMonthValue(value)}</td>
+                  ))}
+                </tr>
               ))}
             </tbody>
           </table>

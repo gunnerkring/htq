@@ -1,3 +1,8 @@
+import {
+  formatOptionalTrainingMonth,
+  formatTrainingMonth,
+  formatTrainingMonthProgress
+} from "./display";
 import type {
   PilotProjectionSettings,
   ProjectionMonth,
@@ -51,10 +56,10 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
               <td>${escapeHtml(pilot.name)}</td>
               <td>${escapeHtml(pilot.level || "")}</td>
               <td>${formatNumber(pilot.pilotHours)}</td>
-              <td>${formatTrainingMonth(pilot.trainingMonth)}</td>
+              <td>${formatOptionalTrainingMonth(pilot.trainingMonth)}</td>
               <td>${pilot.waiver550 ? "Yes" : "No"}</td>
               <td>${pilot.tttWaiver ? "Yes" : "No"}</td>
-              <td>TM${pilot.targetTrainingMonth}</td>
+              <td>${formatTrainingMonth(pilot.targetTrainingMonth)}</td>
               <td>${formatNumber(pilot.deploymentHours, 0)}</td>
               <td>${formatNumber(pilot.frtpHours, 0)}</td>
             </tr>
@@ -70,18 +75,18 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
   const projectionRows = payload.projections.length
     ? payload.projections
         .map((row) => {
-          const hoursCells = row.projectedHoursByMonth
+          const hoursCells = row.endOfMonthHoursByMonth
             .map((value) => `<td>${formatNumber(value)}</td>`)
             .join("");
           const trainingMonthCells = row.trainingMonthsByMonth
-            .map((value) => `<td>${escapeHtml(String(value))}</td>`)
+            .map((value) => `<td>${escapeHtml(formatTrainingMonthProgress(value))}</td>`)
             .join("");
           const qualificationStatus =
-            row.qualifiesInMonthIndex == null
+            row.qualifiesByEndOfMonthIndex == null
               ? "Not achieved in window"
-              : `Qualifies in ${escapeHtml(
-                  payload.months[row.qualifiesInMonthIndex]?.monthLabel ?? ""
-                )} ${escapeHtml(payload.months[row.qualifiesInMonthIndex]?.yearLabel ?? "")}`;
+              : `Qualifies by end of ${escapeHtml(
+                  payload.months[row.qualifiesByEndOfMonthIndex]?.monthLabel ?? ""
+                )} ${escapeHtml(payload.months[row.qualifiesByEndOfMonthIndex]?.yearLabel ?? "")}`;
 
           return `
             <tr class="primary-row">
@@ -377,7 +382,7 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
         <div>
           <p class="eyebrow">Hours to Qualify</p>
           <h1>Projection Report</h1>
-          <p>Workbook-aligned HTQ and sortie output for selected pilots.</p>
+          <p>Workbook-aligned month-end HTQ and sortie output for selected pilots.</p>
         </div>
         <div class="hero-meta">
           <div class="meta-block">
@@ -436,7 +441,7 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
                 <th>Name</th>
                 <th>Level</th>
                 <th>Current Hours</th>
-                <th>Start TM</th>
+                <th>Start Month</th>
                 <th>550 Waiver</th>
                 <th>TTT Waiver</th>
                 <th>Target Month</th>
@@ -454,7 +459,7 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
       <section class="section page-break">
         <div class="section-header">
           <h2>HTQ Projection</h2>
-          <p>Projected cumulative hours and training month progress</p>
+          <p>End-of-month cumulative hours and training month progress</p>
         </div>
         <div class="report-table">
           <table>
@@ -518,10 +523,6 @@ export function buildPdfReportHtml(payload: PdfReportPayload): string {
 
 function formatNumber(value: number, fractionDigits = 1): string {
   return value.toFixed(fractionDigits);
-}
-
-function formatTrainingMonth(value: number | null): string {
-  return value == null ? "--" : `TM${value}`;
 }
 
 function formatCycleLabel(cycle: ProjectionMonth["cycle"]): string {

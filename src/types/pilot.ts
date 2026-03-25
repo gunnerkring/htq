@@ -57,14 +57,16 @@ export type ProjectionRow = {
   waiver550: boolean;
   deploymentHours: number;
   frtpHours: number;
-  projectedHoursByMonth: number[];
+  endOfMonthHoursByMonth: number[];
   trainingMonthsByMonth: (number | "Q" | "")[];
   monthlySortiesByMonth: (number | "")[];
-  qualifiesInMonthIndex: number | null;
+  qualifiesByEndOfMonthIndex: number | null;
 };
 
 export type ParsedWorkbook = {
   pilots: SharpPilot[];
+  reportMonthDate?: Date;
+  initialSquadron?: string;
   initialPhase?: PhaseKey;
   initialMonthModeExact?: boolean;
   initialSelectedNames?: string[];

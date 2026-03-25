@@ -4,12 +4,18 @@ import {
   sanitizeTargetTrainingMonth
 } from "../core/autoCalculate";
 import {
-  DEFAULT_TARGET_TRAINING_MONTH,
-  MAX_DEPLOYMENT_HOURS,
-  MAX_HOMECYCLE_HOURS,
-  MIN_DEPLOYMENT_HOURS,
-  MIN_HOMECYCLE_HOURS
+  DEFAULT_TARGET_TRAINING_MONTH
 } from "../core/constants";
+import {
+  formatOptionalTrainingMonth,
+  formatPilotDisplayName,
+  formatPilotLevel,
+  formatTrainingMonth
+} from "../core/display";
+import {
+  sanitizeDeploymentHours,
+  sanitizeHomecycleHours
+} from "../core/sanitize";
 import type { AutoCalcResult, CulledPilot, PilotProjectionSettings } from "../types/pilot";
 
 type ConfiguredPilot = CulledPilot & PilotProjectionSettings;
@@ -31,23 +37,17 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
   );
 
   const sortedPilots = useMemo(() => {
-    const reviewIndexByName = new Map(reviewResults.map((result, index) => [result.name, index]));
+    return [...pilots].sort((left, right) => {
+      const leftTrainingMonth = left.trainingMonth ?? Number.NEGATIVE_INFINITY;
+      const rightTrainingMonth = right.trainingMonth ?? Number.NEGATIVE_INFINITY;
 
-    return pilots
-      .map((pilot, index) => ({
-        pilot,
-        index,
-        reviewIndex: reviewIndexByName.get(pilot.name) ?? Number.POSITIVE_INFINITY
-      }))
-      .sort((left, right) => {
-        if (left.reviewIndex !== right.reviewIndex) {
-          return left.reviewIndex - right.reviewIndex;
-        }
+      if (leftTrainingMonth !== rightTrainingMonth) {
+        return rightTrainingMonth - leftTrainingMonth;
+      }
 
-        return left.index - right.index;
-      })
-      .map((entry) => entry.pilot);
-  }, [pilots, reviewResults]);
+      return formatPilotDisplayName(left.name).localeCompare(formatPilotDisplayName(right.name));
+    });
+  }, [pilots]);
 
   return (
     <section className="panel">
@@ -82,7 +82,7 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
             </div>
           ) : null}
           <div className="table-wrap">
-            <table className="data-table">
+            <table className="data-table pilot-settings-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -113,9 +113,9 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
                           {reviewResult ? <span className="status-chip danger">Review</span> : null}
                         </div>
                       </td>
-                      <td>{pilot.level}</td>
+                      <td>{formatPilotLevel(pilot.level)}</td>
                       <td>{pilot.pilotHours.toFixed(1)}</td>
-                      <td>{pilot.trainingMonth ?? ""}</td>
+                      <td>{formatOptionalTrainingMonth(pilot.trainingMonth, "")}</td>
                       <td>{formatMaybeNumber(pilot.hrsPerMonthTo600)}</td>
                       <td>
                         <input
@@ -154,7 +154,7 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
                         >
                           {getTargetTrainingMonthOptions(pilot.tttWaiver).map((monthOption) => (
                             <option key={monthOption} value={monthOption}>
-                              TM{monthOption}
+                              {formatTrainingMonth(monthOption)}
                             </option>
                           ))}
                         </select>
@@ -162,12 +162,17 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
                       <td>
                         <input
                           type="number"
-                          min={MIN_DEPLOYMENT_HOURS}
-                          max={MAX_DEPLOYMENT_HOURS}
+                          min={0}
+                          step={1}
                           value={pilot.deploymentHours}
                           onChange={(e) =>
                             onUpdatePilotSettings(pilot.name, {
                               deploymentHours: Number(e.target.value || 0)
+                            })
+                          }
+                          onBlur={(e) =>
+                            onUpdatePilotSettings(pilot.name, {
+                              deploymentHours: sanitizeDeploymentHours(Number(e.target.value))
                             })
                           }
                         />
@@ -175,12 +180,17 @@ export function SelectedPilotSettings({ pilots, reviewResults, onUpdatePilotSett
                       <td>
                         <input
                           type="number"
-                          min={MIN_HOMECYCLE_HOURS}
-                          max={MAX_HOMECYCLE_HOURS}
+                          min={0}
+                          step={1}
                           value={pilot.frtpHours}
                           onChange={(e) =>
                             onUpdatePilotSettings(pilot.name, {
                               frtpHours: Number(e.target.value || 0)
+                            })
+                          }
+                          onBlur={(e) =>
+                            onUpdatePilotSettings(pilot.name, {
+                              frtpHours: sanitizeHomecycleHours(Number(e.target.value))
                             })
                           }
                         />

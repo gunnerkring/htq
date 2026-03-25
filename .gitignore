@@ -2,6 +2,12 @@ node_modules/
 dist/
 dist-electron/
 release/
-build/
+build/*
+!build/icon.icns
+!build/icon.ico
+!build/icon.png
+!build/entitlements.mac.plist
+!build/entitlements.mac.inherit.plist
 *.log
 *.tsbuildinfo
+.DS_Store

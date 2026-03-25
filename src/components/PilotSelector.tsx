@@ -1,4 +1,8 @@
 import { useDeferredValue, useMemo, useState } from "react";
+import {
+  formatOptionalTrainingMonth,
+  formatPilotLevel
+} from "../core/display";
 import type { CulledPilot } from "../types/pilot";
 
 type Props = {
@@ -34,7 +38,9 @@ export function PilotSelector({ pilots, selectedNames, onToggle, onSelectAll }: 
         const searchText = [
           pilot.name,
           pilot.level,
+          formatPilotLevel(pilot.level),
           pilot.trainingMonth != null ? String(pilot.trainingMonth) : "",
+          formatOptionalTrainingMonth(pilot.trainingMonth, ""),
           pilot.pilotHours.toFixed(1)
         ]
           .join(" ")
@@ -110,7 +116,9 @@ export function PilotSelector({ pilots, selectedNames, onToggle, onSelectAll }: 
                 <div className="pilot-card-top">
                   <div>
                     <div className="pilot-name">{pilot.name}</div>
-                    <div className="pilot-subtitle">{pilot.level || "Unknown level"}</div>
+                    <div className="pilot-subtitle">
+                      {pilot.level ? formatPilotLevel(pilot.level) : "Unknown level"}
+                    </div>
                   </div>
                   <span className={isSelected ? "status-pill selected" : "status-pill"}>
                     {isSelected ? "Selected" : "Click to add"}
@@ -124,7 +132,7 @@ export function PilotSelector({ pilots, selectedNames, onToggle, onSelectAll }: 
                   </div>
                   <div className="pilot-metric">
                     <span className="metric-label">Training Month</span>
-                    <strong>{pilot.trainingMonth ?? "--"}</strong>
+                    <strong>{formatOptionalTrainingMonth(pilot.trainingMonth)}</strong>
                   </div>
                   <div className="pilot-metric">
                     <span className="metric-label">Need / Mo To 600</span>

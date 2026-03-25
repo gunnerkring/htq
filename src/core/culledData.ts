@@ -1,5 +1,6 @@
 import type { CulledPilot, SharpPilot } from "../types/pilot";
 import { QUAL_HOURS } from "./constants";
+import { computeRequiredHoursPerMonth } from "./requirements";
 
 export function buildCulledData(
   sharpRows: SharpPilot[],
@@ -13,18 +14,15 @@ export function buildCulledData(
           ? pilot.trainingMonth
           : pilot.trainingMonth + 1;
 
-    const over600 = pilot.pilotHours > QUAL_HOURS;
-    const monthsRemainingToMonth24 =
-      adjustedTrainingMonth == null ? null : 24 - adjustedTrainingMonth;
-
-    let hrsPerMonthTo600: number | null = null;
-    if (
-      monthsRemainingToMonth24 != null &&
-      !over600 &&
-      monthsRemainingToMonth24 !== 0
-    ) {
-      hrsPerMonthTo600 = (QUAL_HOURS - pilot.pilotHours) / monthsRemainingToMonth24;
-    }
+    const over600 = pilot.pilotHours >= QUAL_HOURS;
+    const hrsPerMonthTo600 = over600
+      ? null
+      : computeRequiredHoursPerMonth({
+          currentHours: pilot.pilotHours,
+          threshold: QUAL_HOURS,
+          currentTrainingMonth: adjustedTrainingMonth,
+          targetTrainingMonth: 24
+        });
 
     return {
       ...pilot,

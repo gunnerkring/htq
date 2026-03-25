@@ -1,53 +1,51 @@
 import {
-  MAX_DEPLOYMENT_HOURS,
-  MAX_HOMECYCLE_HOURS,
-  MIN_DEPLOYMENT_HOURS,
-  MIN_HOMECYCLE_HOURS,
-  PHASE_OPTIONS
+  DEFAULT_SQUADRON,
+  SQUADRON_OPTIONS
 } from "../core/constants";
-import type { PhaseKey } from "../types/pilot";
 
 type Props = {
-  phase: PhaseKey;
-  setPhase: (value: PhaseKey) => void;
-  defaultDeploymentHours: number;
-  setDefaultDeploymentHours: (value: number) => void;
-  defaultHomecycleHours: number;
-  setDefaultHomecycleHours: (value: number) => void;
+  squadron: string;
+  setSquadron: (value: string) => void;
   monthModeExact: boolean;
   setMonthModeExact: (value: boolean) => void;
   onOpenWorkbook: () => void;
+  onSaveSnapshot: () => void;
   onExportCsv: () => void;
   onExportPdf: () => void;
-  onApplyDefaultsToSelected: () => void;
   onAutoCalculateSelected: () => void;
   exportDisabled: boolean;
-  applyDefaultsDisabled: boolean;
   autoCalculateDisabled: boolean;
+  saveSnapshotDisabled: boolean;
   sourceLabel: string;
 };
 
 export function Controls(props: Props) {
+  const sortedSquadronOptions = [...SQUADRON_OPTIONS].sort((left, right) => {
+    const leftNumber = Number(left.key.replace("VP-", ""));
+    const rightNumber = Number(right.key.replace("VP-", ""));
+
+    return leftNumber - rightNumber;
+  });
+
   return (
     <section className="panel controls-panel">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Controls</p>
           <h2>Projection Setup</h2>
         </div>
-        <p className="panel-subtitle">
-          Load the source workbook, set phase and default hour assumptions, and export the results.
-        </p>
       </div>
 
       <div className="controls-grid">
         <div className="control-card">
-          <h3>Projection Window</h3>
+          <h3>Select Your Squadron</h3>
           <div className="field-stack">
             <div>
-              <label>Phase</label>
-              <select value={props.phase} onChange={(e) => props.setPhase(e.target.value as PhaseKey)}>
-                {PHASE_OPTIONS.map((option) => (
+              <label>Squadron</label>
+              <select
+                value={props.squadron || DEFAULT_SQUADRON}
+                onChange={(e) => props.setSquadron(e.target.value)}
+              >
+                {sortedSquadronOptions.map((option) => (
                   <option key={option.key} value={option.key}>
                     {option.label}
                   </option>
@@ -68,55 +66,35 @@ export function Controls(props: Props) {
           </div>
         </div>
 
-        <div className="control-card">
-          <h3>Hour Defaults</h3>
-          <div className="field-stack">
-            <div>
-              <label>Default Deployment Hours</label>
-              <input
-                type="number"
-                min={MIN_DEPLOYMENT_HOURS}
-                max={MAX_DEPLOYMENT_HOURS}
-                value={props.defaultDeploymentHours}
-                onChange={(e) => props.setDefaultDeploymentHours(Number(e.target.value || 0))}
-              />
-            </div>
-
-            <div>
-              <label>Default FRTP / Home Cycle Hours</label>
-              <input
-                type="number"
-                min={MIN_HOMECYCLE_HOURS}
-                max={MAX_HOMECYCLE_HOURS}
-                value={props.defaultHomecycleHours}
-                onChange={(e) => props.setDefaultHomecycleHours(Number(e.target.value || 0))}
-              />
-            </div>
-          </div>
+        <div className="control-card guidance-card">
+          <p className="guidance-copy">
+            Load the SHARP PPT report in Excel format from the 1st day of the month, select your
+            squadron, choose your pilots, and determine how many hours are realistically needed to
+            qualify.
+          </p>
         </div>
-
       </div>
 
       <div className="control-footer">
         <div className="button-row">
           <button className="button button-primary" onClick={props.onOpenWorkbook} type="button">
-            Open Workbook
+            Upload PPT Report
           </button>
           <button
-            className="button button-secondary"
-            onClick={props.onApplyDefaultsToSelected}
-            type="button"
-            disabled={props.applyDefaultsDisabled}
-          >
-            Apply Defaults
-          </button>
-          <button
-            className="button button-secondary"
+            className="button button-support"
             onClick={props.onAutoCalculateSelected}
             type="button"
             disabled={props.autoCalculateDisabled}
           >
             Auto Calculate Selected
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={props.onSaveSnapshot}
+            type="button"
+            disabled={props.saveSnapshotDisabled}
+          >
+            Save Snapshot
           </button>
           <button
             className="button button-ghost"
@@ -137,8 +115,8 @@ export function Controls(props: Props) {
         </div>
 
         <div className="source-note">
-          <span className="source-label">Source</span>
-          <strong>{props.sourceLabel || "No workbook loaded"}</strong>
+          <span className="source-label">Report</span>
+          <strong>{props.sourceLabel || "No report uploaded"}</strong>
         </div>
       </div>
     </section>
